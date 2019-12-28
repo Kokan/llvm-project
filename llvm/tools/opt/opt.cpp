@@ -629,6 +629,7 @@ int main(int argc, char **argv) {
   // Figure out what stream we are supposed to write to...
   std::unique_ptr<ToolOutputFile> Out;
   std::unique_ptr<ToolOutputFile> ThinLinkOut;
+  raw_ostream *OS = nullptr;
   if (NoOutput) {
     if (!OutputFilename.empty())
       errs() << "WARNING: The -o (output filename) option is ignored when\n"
@@ -642,6 +643,7 @@ int main(int argc, char **argv) {
     sys::fs::OpenFlags Flags = OutputAssembly ? sys::fs::OF_Text
                                               : sys::fs::OF_None;
     Out.reset(new ToolOutputFile(OutputFilename, EC, Flags));
+    OS = &Out->os();
     if (EC) {
       errs() << EC.message() << '\n';
       return 1;
@@ -683,7 +685,7 @@ int main(int argc, char **argv) {
   // console, print out a warning message and refuse to do it.  We don't
   // impress anyone by spewing tons of binary goo to a terminal.
   if (!Force && !NoOutput && !AnalyzeOnly && !OutputAssembly)
-    if (CheckBitcodeOutputToConsole(Out->os(), !Quiet))
+    if (CheckBitcodeOutputToConsole(*OS, !Quiet))
       NoOutput = true;
 
   if (OutputThinLTOBC)
@@ -762,14 +764,14 @@ int main(int argc, char **argv) {
         OutputFilename = "-";
 
       std::error_code EC;
-      Out = std::make_unique<ToolOutputFile>(OutputFilename, EC,
-                                              sys::fs::OF_None);
+      Out.reset(new ToolOutputFile(OutputFilename, EC, sys::fs::OF_None));
+      OS = &Out->os();
       if (EC) {
         errs() << EC.message() << '\n';
         return 1;
       }
     }
-    Passes.add(createBreakpointPrinter(Out->os()));
+    Passes.add(createBreakpointPrinter(*OS));
     NoOutput = true;
   }
 
@@ -832,19 +834,19 @@ int main(int argc, char **argv) {
       if (AnalyzeOnly) {
         switch (Kind) {
         case PT_Region:
-          Passes.add(createRegionPassPrinter(PassInf, Out->os(), Quiet));
+          Passes.add(createRegionPassPrinter(PassInf, *OS, Quiet));
           break;
         case PT_Loop:
-          Passes.add(createLoopPassPrinter(PassInf, Out->os(), Quiet));
+          Passes.add(createLoopPassPrinter(PassInf, *OS, Quiet));
           break;
         case PT_Function:
-          Passes.add(createFunctionPassPrinter(PassInf, Out->os(), Quiet));
+          Passes.add(createFunctionPassPrinter(PassInf, *OS, Quiet));
           break;
         case PT_CallGraphSCC:
-          Passes.add(createCallGraphPassPrinter(PassInf, Out->os(), Quiet));
+          Passes.add(createCallGraphPassPrinter(PassInf, *OS, Quiet));
           break;
         default:
-          Passes.add(createModulePassPrinter(PassInf, Out->os(), Quiet));
+          Passes.add(createModulePassPrinter(PassInf, *OS, Quiet));
           break;
         }
       }
@@ -899,29 +901,24 @@ int main(int argc, char **argv) {
   SmallVector<char, 0> Buffer;
   SmallVector<char, 0> FirstRunBuffer;
   std::unique_ptr<raw_svector_ostream> BOS;
-  raw_ostream *OS = nullptr;
 
   // Write bitcode or assembly to the output as the last step...
-  if (!NoOutput && !AnalyzeOnly) {
-    assert(Out);
-    OS = &Out->os();
-    if (RunTwice) {
-      BOS = std::make_unique<raw_svector_ostream>(Buffer);
-      OS = BOS.get();
-    }
-    if (OutputAssembly) {
-      if (EmitSummaryIndex)
-        report_fatal_error("Text output is incompatible with -module-summary");
-      if (EmitModuleHash)
-        report_fatal_error("Text output is incompatible with -module-hash");
-      Passes.add(createPrintModulePass(*OS, "", PreserveAssemblyUseListOrder));
-    } else if (OutputThinLTOBC)
-      Passes.add(createWriteThinLTOBitcodePass(
-          *OS, ThinLinkOut ? &ThinLinkOut->os() : nullptr));
-    else
-      Passes.add(createBitcodeWriterPass(*OS, PreserveBitcodeUseListOrder,
-                                         EmitSummaryIndex, EmitModuleHash));
+  if (!OS || RunTwice) {
+    BOS = std::make_unique<raw_svector_ostream>(Buffer);
+    OS = BOS.get();
   }
+  if (OutputAssembly) {
+    if (EmitSummaryIndex)
+      report_fatal_error("Text output is incompatible with -module-summary");
+    if (EmitModuleHash)
+      report_fatal_error("Text output is incompatible with -module-hash");
+    Passes.add(createPrintModulePass(*OS, "", PreserveAssemblyUseListOrder));
+  } else if (OutputThinLTOBC)
+    Passes.add(createWriteThinLTOBitcodePass(
+        *OS, ThinLinkOut ? &ThinLinkOut->os() : nullptr));
+  else
+    Passes.add(createBitcodeWriterPass(*OS, PreserveBitcodeUseListOrder,
+                                       EmitSummaryIndex, EmitModuleHash));
 
   // Before executing passes, print the final values of the LLVM options.
   cl::PrintOptionValues();
@@ -950,13 +947,15 @@ int main(int argc, char **argv) {
              "Writing the result of the second run to the specified output.\n"
              "To generate the one-run comparison binary, just run without\n"
              "the compile-twice option\n";
-      Out->os() << BOS->str();
+      if (!NoOutput && !AnalyzeOnly)
+        Out->os() << BOS->str();
       Out->keep();
       if (RemarksFile)
         RemarksFile->keep();
       return 1;
     }
-    Out->os() << BOS->str();
+    if (!NoOutput && !AnalyzeOnly)
+      Out->os() << BOS->str();
   }
 
   if (DebugifyEach && !DebugifyExport.empty())
