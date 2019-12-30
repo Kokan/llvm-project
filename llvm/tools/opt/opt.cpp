@@ -591,6 +591,8 @@ int main(int argc, char **argv) {
     return 1;
   }
   std::unique_ptr<ToolOutputFile> RemarksFile = std::move(*RemarksFileOrErr);
+  if (RemarksFile)
+    RemarksFile->keep();
 
   // Load the input module...
   std::unique_ptr<Module> M =
@@ -650,6 +652,7 @@ int main(int argc, char **argv) {
     if (!ThinLinkBitcodeFile.empty()) {
       ThinLinkOut.reset(
           new ToolOutputFile(ThinLinkBitcodeFile, EC, sys::fs::OF_None));
+      ThinLinkOut->keep();
       if (EC) {
         errs() << EC.message() << '\n';
         return 1;
@@ -771,6 +774,7 @@ int main(int argc, char **argv) {
     }
     Passes.add(createBreakpointPrinter(Out->os()));
     NoOutput = true;
+    Out->keep();
   }
 
   if (TM) {
@@ -923,6 +927,7 @@ int main(int argc, char **argv) {
     else
       Passes.add(createBitcodeWriterPass(*OS, PreserveBitcodeUseListOrder,
                                          EmitSummaryIndex, EmitModuleHash));
+    Out->keep();
   }
 
   // Before executing passes, print the final values of the LLVM options.
@@ -952,12 +957,8 @@ int main(int argc, char **argv) {
              "Writing the result of the second run to the specified output.\n"
              "To generate the one-run comparison binary, just run without\n"
              "the compile-twice option\n";
-      if (ShouldEmitOutput) {
+      if (ShouldEmitOutput)
         Out->os() << BOS->str();
-        Out->keep();
-      }
-      if (RemarksFile)
-        RemarksFile->keep();
       return 1;
     }
     if (ShouldEmitOutput)
@@ -967,15 +968,6 @@ int main(int argc, char **argv) {
   if (DebugifyEach && !DebugifyExport.empty())
     exportDebugifyStats(DebugifyExport, Passes.getDebugifyStatsMap());
 
-  // Declare success.
-  if (!NoOutput || PrintBreakpoints)
-    Out->keep();
-
-  if (RemarksFile)
-    RemarksFile->keep();
-
-  if (ThinLinkOut)
-    ThinLinkOut->keep();
 
   return 0;
 }
