@@ -482,6 +482,19 @@ GetTargetMachine(Triple TheTriple, StringRef CPUStr, StringRef FeaturesStr,
       getCodeModel(), GetCodeGenOptLevel()));
 }
 
+static OutputKind GetOutputKind() {
+  if (NoOutput)
+    return OK_NoOutput;
+
+  if (OutputAssembly)
+    return OK_OutputAssembly;
+
+  if (OutputThinLTOBC)
+    return OK_OutputThinLTOBitcode;
+
+  return OK_OutputBitcode;
+}
+
 #ifdef LINK_POLLY_INTO_TOOLS
 namespace polly {
 void initializePollyPasses(llvm::PassRegistry &Registry);
@@ -699,16 +712,12 @@ int main(int argc, char **argv) {
     if (CheckBitcodeOutputToConsole(Out->os(), !Quiet))
       NoOutput = true;
 
+  OutputKind OK = GetOutputKind();
+
   if (OutputThinLTOBC)
     M->addModuleFlag(Module::Error, "EnableSplitLTOUnit", SplitLTOUnit);
 
   if (PassPipeline.getNumOccurrences() > 0) {
-    OutputKind OK = OK_NoOutput;
-    if (!NoOutput)
-      OK = OutputAssembly
-               ? OK_OutputAssembly
-               : (OutputThinLTOBC ? OK_OutputThinLTOBitcode : OK_OutputBitcode);
-
     VerifierKind VK = VK_VerifyInAndOut;
     if (NoVerify)
       VK = VK_NoVerifier;
@@ -925,14 +934,23 @@ int main(int argc, char **argv) {
       BOS = std::make_unique<raw_svector_ostream>(Buffer);
       OS = BOS.get();
     }
-    if (OutputAssembly) {
-      Passes.add(createPrintModulePass(*OS, "", PreserveAssemblyUseListOrder));
-    } else if (OutputThinLTOBC)
+
+    switch (OK) {
+    case OK_NoOutput:
+      assert(false);
+      break;
+    case OK_OutputThinLTOBitcode:
       Passes.add(createWriteThinLTOBitcodePass(
           *OS, ThinLinkOut ? &ThinLinkOut->os() : nullptr));
-    else
+      break;
+    case OK_OutputBitcode:
       Passes.add(createBitcodeWriterPass(*OS, PreserveBitcodeUseListOrder,
                                          EmitSummaryIndex, EmitModuleHash));
+      break;
+    case OK_OutputAssembly:
+      Passes.add(createPrintModulePass(*OS, "", PreserveAssemblyUseListOrder));
+      break;
+    }
     Out->keep();
   }
 
