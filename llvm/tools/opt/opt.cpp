@@ -466,9 +466,9 @@ static CodeGenOpt::Level GetCodeGenOptLevel() {
 }
 
 // Returns the TargetMachine instance or zero if no triple is provided.
-static TargetMachine* GetTargetMachine(Triple TheTriple, StringRef CPUStr,
-                                       StringRef FeaturesStr,
-                                       const TargetOptions &Options) {
+static std::unique_ptr<TargetMachine>
+GetTargetMachine(Triple TheTriple, StringRef CPUStr, StringRef FeaturesStr,
+                 const TargetOptions &Options) {
   std::string Error;
   const Target *TheTarget = TargetRegistry::lookupTarget(MArch, TheTriple,
                                                          Error);
@@ -477,9 +477,9 @@ static TargetMachine* GetTargetMachine(Triple TheTriple, StringRef CPUStr,
     return nullptr;
   }
 
-  return TheTarget->createTargetMachine(TheTriple.getTriple(), CPUStr,
-                                        FeaturesStr, Options, getRelocModel(),
-                                        getCodeModel(), GetCodeGenOptLevel());
+  return std::unique_ptr<TargetMachine>(TheTarget->createTargetMachine(
+      TheTriple.getTriple(), CPUStr, FeaturesStr, Options, getRelocModel(),
+      getCodeModel(), GetCodeGenOptLevel()));
 }
 
 #ifdef LINK_POLLY_INTO_TOOLS
@@ -661,22 +661,20 @@ int main(int argc, char **argv) {
   }
 
   Triple ModuleTriple(M->getTargetTriple());
-  std::string CPUStr, FeaturesStr;
-  TargetMachine *Machine = nullptr;
-  const TargetOptions Options = InitTargetOptionsFromCodeGenFlags();
 
-  if (ModuleTriple.getArch()) {
-    CPUStr = getCPUStr();
-    FeaturesStr = getFeaturesStr();
-    Machine = GetTargetMachine(ModuleTriple, CPUStr, FeaturesStr, Options);
-  } else if (ModuleTriple.getArchName() != "unknown" &&
-             ModuleTriple.getArchName() != "") {
+  if (!ModuleTriple.getArch() && ModuleTriple.getArchName() != "unknown" &&
+      ModuleTriple.getArchName() != "") {
     errs() << argv[0] << ": unrecognized architecture '"
            << ModuleTriple.getArchName() << "' provided.\n";
     return 1;
   }
 
-  std::unique_ptr<TargetMachine> TM(Machine);
+  std::string CPUStr = getCPUStr();
+  std::string FeaturesStr = getFeaturesStr();
+  const TargetOptions Options = InitTargetOptionsFromCodeGenFlags();
+
+  std::unique_ptr<TargetMachine> TM =
+      GetTargetMachine(ModuleTriple, CPUStr, FeaturesStr, Options);
 
   // Override function attributes based on CPUStr, FeaturesStr, and command line
   // flags.
