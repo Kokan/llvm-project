@@ -522,22 +522,7 @@ void exportDebugifyStats(llvm::StringRef Path, const DebugifyStatsMap &Map) {
   }
 }
 
-//===----------------------------------------------------------------------===//
-// main for opt
-//
-int main(int argc, char **argv) {
-  InitLLVM X(argc, argv);
-
-  // Enable debug stream buffering.
-  EnableDebugBuffering = true;
-
-  LLVMContext Context;
-
-  InitializeAllTargets();
-  InitializeAllTargetMCs();
-  InitializeAllAsmPrinters();
-  InitializeAllAsmParsers();
-
+static void InitializetDefaultPasses() {
   // Initialize passes
   PassRegistry &Registry = *PassRegistry::getPassRegistry();
   initializeCore(Registry);
@@ -580,6 +565,25 @@ int main(int argc, char **argv) {
 #ifdef LINK_POLLY_INTO_TOOLS
   polly::initializePollyPasses(Registry);
 #endif
+}
+
+//===----------------------------------------------------------------------===//
+// main for opt
+//
+int main(int argc, char **argv) {
+  InitLLVM X(argc, argv);
+
+  // Enable debug st0ream buffering.
+  EnableDebugBuffering = true;
+
+  LLVMContext Context;
+
+  InitializeAllTargets();
+  InitializeAllTargetMCs();
+  InitializeAllAsmPrinters();
+  InitializeAllAsmParsers();
+
+  InitializetDefaultPasses();
 
   cl::ParseCommandLineOptions(argc, argv,
     "llvm .bc -> .bc modular optimizer and analysis printer\n");
