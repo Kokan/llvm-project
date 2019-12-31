@@ -594,6 +594,18 @@ int main(int argc, char **argv) {
   if (RemarksFile)
     RemarksFile->keep();
 
+  if (OutputAssembly) {
+    if (EmitSummaryIndex) {
+      errs() << argv[0]
+             << ": Text output is incompatible with -module-summary\n";
+      return 1;
+    }
+    if (EmitModuleHash) {
+      errs() << argv[0] << ": Text output is incompatible with -module-hash\n";
+      return 1;
+    }
+  }
+
   // Load the input module...
   std::unique_ptr<Module> M =
       parseIRFile(InputFilename, Err, Context, !NoVerify, ClDataLayout);
@@ -914,10 +926,6 @@ int main(int argc, char **argv) {
       OS = BOS.get();
     }
     if (OutputAssembly) {
-      if (EmitSummaryIndex)
-        report_fatal_error("Text output is incompatible with -module-summary");
-      if (EmitModuleHash)
-        report_fatal_error("Text output is incompatible with -module-hash");
       Passes.add(createPrintModulePass(*OS, "", PreserveAssemblyUseListOrder));
     } else if (OutputThinLTOBC)
       Passes.add(createWriteThinLTOBitcodePass(
