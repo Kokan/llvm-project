@@ -961,20 +961,23 @@ int main(int argc, char **argv) {
   // Before executing passes, print the final values of the LLVM options.
   cl::PrintOptionValues();
 
-  if (!RunTwice) {
-    // Now that we have all of the passes ready, run them.
-    Passes.run(*M);
-  } else {
+  std::unique_ptr<Module> ModuleCopy;
+  if (RunTwice) {
+    ModuleCopy = CloneModule(*M);
+  }
+
+  // Now that we have all of the passes ready, run them.
+  Passes.run(*M);
+
+  if (RunTwice) {
     // If requested, run all passes twice with the same pass manager to catch
     // bugs caused by persistent state in the passes.
-    std::unique_ptr<Module> M2(CloneModule(*M));
-    // Run all passes on the original module first, so the second run processes
-    // the clone to catch CloneModule bugs.
-    Passes.run(*M);
+    // Run all passes on the second run processes the clone to catch CloneModule
+    // bugs.
     FirstRunBuffer = Buffer;
     Buffer.clear();
 
-    Passes.run(*M2);
+    Passes.run(*ModuleCopy);
 
     // Compare the two outputs and make sure they're the same
     assert(Out);
