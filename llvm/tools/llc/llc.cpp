@@ -609,9 +609,7 @@ static int compileModule(char **argv, LLVMContext &Context) {
 
     // Compare the two outputs and make sure they're the same
     if (CompileTwice) {
-      if (Buffer.size() != CompileTwiceBuffer.size() ||
-          (memcmp(Buffer.data(), CompileTwiceBuffer.data(), Buffer.size()) !=
-           0)) {
+      if (Buffer != CompileTwiceBuffer) {
         errs()
             << "Running the pass manager twice changed the output.\n"
                "Writing the result of the second run to the specified output\n"

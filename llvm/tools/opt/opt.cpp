@@ -981,8 +981,7 @@ int main(int argc, char **argv) {
 
     // Compare the two outputs and make sure they're the same
     assert(Out);
-    if (Buffer.size() != FirstRunBuffer.size() ||
-        (memcmp(Buffer.data(), FirstRunBuffer.data(), Buffer.size()) != 0)) {
+    if (Buffer != FirstRunBuffer) {
       errs()
           << "Running the pass manager twice changed the output.\n"
              "Writing the result of the second run to the specified output.\n"
